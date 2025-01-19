@@ -1,7 +1,6 @@
-# Tauri + Preact
+# knockknock
 
-This template should help get you started developing with Tauri and Preact in Vite.
+- Generate the `Personal Access Token`, with permissions `repo:read`, `notifications:read`
+- Paste it in `~/.githubapi`
+- `xattr -c /Applications/knocknock.app`
 
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
