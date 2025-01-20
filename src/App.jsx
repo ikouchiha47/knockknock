@@ -17,7 +17,7 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [firstLoad, setFirstLoad] = useState(false);
   const [activeTab, setActiveTab] = useState("ci_activity");
-
+  const [groupedNotifications, doGroupNotification] = useState(null);
 
   let permissionRef = useRef(false);
   const currentWindow = useRef(null);
@@ -110,7 +110,6 @@ function App() {
           ...recvdNotifications.filter(notif => prevNotifications.findIndex(n => n.id == notif.id) < 0)]);
 
 
-
         if (changedNotifications.size == 0) {
           return prevNotifications;
         }
@@ -127,6 +126,17 @@ function App() {
 
 
   useEffect(async () => {
+    const _groupedNotifications = {
+      ci_activity: groupByTitle(notifications.filter((n) => n.reason === "ci_activity")),
+      participating: groupByTitle(notifications.filter((n) => n.reason === "participating")),
+      review_requested: groupByTitle(notifications.filter((n) => n.reason === "review_requested")),
+      rest: groupByTitle(notifications.filter(
+        (n) => !["ci_activity", "participating", "review_requested"].includes(n.reason)
+      )),
+    };
+
+    doGroupNotification(_groupedNotifications);
+
     if (firstLoad)
       await notify({
         title: 'Yo',
@@ -135,52 +145,83 @@ function App() {
 
   }, [notifications])
 
-  const groupedNotifications = {
-    ci_activity: notifications.filter((n) => n.reason === "ci_activity"),
-    participating: notifications.filter((n) => n.reason === "participating"),
-    review_requested: notifications.filter((n) => n.reason === "review_requested"),
-    rest: notifications.filter(
-      (n) => !["ci_activity", "participating", "review_requested"].includes(n.reason)
-    ),
-  };
+  const groupByTitle = (notifications) => {
+    return notifications.reduce((acc, curr) => {
+      const title = curr.subject.title;
+      const repo = curr.repository.full_name;
+
+      const key = `${title}_${repo}`
+
+      if (!acc[key]) {
+        acc[key] = { count: 0, title: title, details: [curr] };
+      }
+
+      acc[key].count += 1;
+
+      // if (acc[key].count == 1)
+      //   acc[key].details.push(curr);
+
+      return acc;
+    }, {});
+  }
+
+  // const renderNotifications = (group) => {
+  //   if (group.length === 0 && firstLoad) {
+  //     return <p className="emptyState">No notifications in this category. 💤</p>;
+  //   }
+  //
+  //   if (group.length == 0 && !firstLoad) {
+  //     return <p className="emptyState">Fetching Notifications... 🚀</p>;
+  //   }
+  //
+  //   return (
+  //     <ul className="notification-list">
+  //       {group.map((notification, index) => (
+  //         <li key={index} className="notification-item">
+  //           <strong>{notification.subject.title}</strong>
+  //           <em className="repo-name">{notification.repository.full_name}</em>
+  //         </li>
+  //       ))}
+  //     </ul>
+  //   );
+  // };
+
 
   const renderNotifications = (group) => {
-    if (group.length === 0 && firstLoad) {
+    const titles = Object.keys(group);
+
+    if (titles.length === 0 && firstLoad) {
       return <p className="emptyState">No notifications in this category. 💤</p>;
     }
 
-    if (group.length == 0 && !firstLoad) {
+    if (titles.length === 0 && !firstLoad) {
       return <p className="emptyState">Fetching Notifications... 🚀</p>;
     }
 
     return (
       <ul className="notification-list">
-        {group.map((notification, index) => (
-          <li key={index} className="notification-item">
-            <strong>{notification.subject.title}</strong>
-            <em className="repo-name">{notification.repository.full_name}</em>
-          </li>
-        ))}
+        {titles.map((key) => {
+          let groupItem = group[key];
+
+          return (
+            <li key={key} className="notification-item">
+              <strong>
+                {groupItem.title} <span className="count">({groupItem.count})</span>
+              </strong>
+              <ul className="sub-list">
+                {groupItem.details.map((notification, index) => (
+                  <li key={index} className="notification-sub-item">
+                    <em className="repo-name">{notification.repository.full_name}</em>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          )
+        }
+        )}
       </ul>
     );
   };
-
-  /*
-   *<div class="row">
-        <ul className="notification-list">
-          {notifications.length > 0 ? (
-            notifications.map((notification, index) => (
-              <li key={index} className="notification-item">
-                <strong>{notification.subject.title}</strong>
-                <em className="repo-name">{notification.repository.full_name}</em>
-              </li>
-            ))
-          ) : (
-            <p>No notifications yet.</p>
-          )}
-        </ul>
-      </div>
-   * */
 
   return (
     <main className="container">
@@ -200,7 +241,7 @@ function App() {
 
       {/* Notifications */}
       <div style={{ marginTop: '16px' }}>
-        {renderNotifications(groupedNotifications[activeTab])}
+        {groupedNotifications && renderNotifications(groupedNotifications[activeTab])}
       </div>
     </main>
   );

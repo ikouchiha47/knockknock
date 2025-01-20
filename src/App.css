@@ -98,6 +98,7 @@ button {
 
 .notification-item strong {
     text-align: left;
+    flex: 1;
 }
 
 .repo-name {
