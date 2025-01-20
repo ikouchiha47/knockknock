@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -17,6 +17,7 @@ pub struct Notification {
     pub subject: Subject,
     pub reason: String,
     pub unread: bool,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -125,10 +126,18 @@ impl GithubClient {
         let current_time = Utc::now().to_rfc3339();
         *self.since_timestamp.lock().await = Some(current_time);
 
-        let filtered_notifications: Vec<Notification> = notifications
+        let mut filtered_notifications: Vec<Notification> = notifications
             .into_iter()
             .filter(|n| n.reason != "author") // && n.unread)
             .collect();
+
+        filtered_notifications.sort_by(|a, b| {
+            let a_time = a.updated_at;
+            let b_time = b.updated_at;
+            // let a_time = DateTime::parse_from_rfc3339(&a.updated_at).unwrap_or_else(|_| Utc::now());
+            // let b_time = DateTime::parse_from_rfc3339(&b.updated_at).unwrap_or_else(|_| Utc::now());
+            b_time.cmp(&a_time)
+        });
 
         Ok(filtered_notifications)
     }

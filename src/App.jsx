@@ -114,7 +114,7 @@ function App() {
           return prevNotifications;
         }
 
-        let mergedNotifications = [...prevNotifications, ...changedNotifications];
+        let mergedNotifications = [...changedNotifications, ...prevNotifications];
         return mergedNotifications;
       })
     });

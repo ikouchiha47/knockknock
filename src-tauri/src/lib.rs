@@ -17,9 +17,12 @@ async fn get_github_notifications(
 
     // let mut tinterval = tokio::time::interval(tokio::time::Duration::from_secs(60));
     let mut interval_duration = tokio::time::Duration::from_secs(60);
-    let max_backoff_duration = tokio::time::Duration::from_secs(3600);
+    let max_backoff_duration = tokio::time::Duration::from_secs(1200);
     let base_interval = tokio::time::Duration::from_secs(60);
 
+    // Hack to wait for UI to load
+    // Non-hack way, let the UI load and send an event to start the ev loop
+    // butfuck that.
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
     loop {
