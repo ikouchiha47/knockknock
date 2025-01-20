@@ -15,20 +15,37 @@ async fn get_github_notifications(
 ) -> Result<(), String> {
     let client = client.clone();
 
-    // TODO: add a decay
-    let mut tinterval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+    // let mut tinterval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+    let mut interval_duration = tokio::time::Duration::from_secs(60);
+    let max_backoff_duration = tokio::time::Duration::from_secs(3600);
+    let base_interval = tokio::time::Duration::from_secs(60);
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
     loop {
-        tinterval.tick().await;
-
+        // tinterval.tick().await;
         let client = client.lock().await;
+
         match client.get_notifications().await {
             Ok(notifications) => {
-                app.emit("github-notification", notifications.clone())
-                    .unwrap_or_else(|e| eprintln!("Failed to emit: {}", e));
+                if notifications.is_empty() {
+                    interval_duration =
+                        std::cmp::min(interval_duration.mul_f32(1.2), max_backoff_duration);
+
+                    eprintln!(
+                        "No notifications found. Backing off to {:?} seconds.",
+                        interval_duration.as_secs()
+                    );
+                } else {
+                    interval_duration = base_interval;
+                    app.emit("github-notification", notifications.clone())
+                        .unwrap_or_else(|e| eprintln!("Failed to emit: {}", e));
+                }
             }
             Err(e) => eprintln!("Error fetching notifications: {}", e),
         }
+
+        tokio::time::sleep(interval_duration).await;
     }
 }
 
