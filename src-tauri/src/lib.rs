@@ -72,6 +72,7 @@ pub async fn run() {
     // let nman = NotificationManager::new("notifications.db");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {

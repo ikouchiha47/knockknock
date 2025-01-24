@@ -11,6 +11,8 @@ import { defaultWindowIcon } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Menu } from '@tauri-apps/api/menu';
 
+import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
+
 import "./App.css";
 
 function App() {
@@ -19,9 +21,10 @@ function App() {
   const [activeTab, setActiveTab] = useState("ci_activity");
   const [groupedNotifications, doGroupNotification] = useState(null);
 
+  const [shortcutKey, setShortcutKey] = useState('N');
+
   let permissionRef = useRef(false);
   const currentWindow = useRef(null);
-
 
   const notify = async (args) => {
     if (permissionRef && !permissionRef.current) {
@@ -30,11 +33,13 @@ function App() {
     }
 
     sendNotification(args)
-
   }
 
   const toggleWindow = async (currWindow, fnKey) => {
     currWindow[fnKey] ? await currWindow[fnKey]() : await Promise.reject("")
+    if (fnKey == 'show') {
+      await currWindow.setVisibleOnAllWorkspaces(true)
+    }
   }
 
   const handleTrayClick = async (itemId) => {
@@ -95,6 +100,43 @@ function App() {
     }
   }, [])
 
+
+  const registerShortcuts = async (key) => {
+    // global shortcut
+    if (!key.trim()) return;
+
+    await register(`CommandOrControl+Shift+${key}`, async (e) => {
+      if (e.state === "Pressed") return;
+
+      let currWindow = currentWindow && currentWindow.current;
+      // let currWindow = getCurrentWindow();
+      let isVisible = await currWindow.isVisible()
+      if (isVisible) {
+        await toggleWindow(currWindow, 'hide')
+        return
+      }
+
+      await toggleWindow(currWindow, 'show');
+    })
+  };
+
+  useEffect(() => {
+    const setupShortcuts = async () => {
+      try {
+        console.log("setting shortcut", shortcutKey)
+        await registerShortcuts(shortcutKey);
+      } catch (e) {
+        console.log("error", e)
+      }
+    }
+
+    setupShortcuts();
+
+    return async () => {
+      await unregisterAll();
+    }
+
+  }, [shortcutKey])
 
   useEffect(() => {
     const unlisten = listen("github-notification", (event) => {
@@ -165,28 +207,6 @@ function App() {
     }, {});
   }
 
-  // const renderNotifications = (group) => {
-  //   if (group.length === 0 && firstLoad) {
-  //     return <p className="emptyState">No notifications in this category. 💤</p>;
-  //   }
-  //
-  //   if (group.length == 0 && !firstLoad) {
-  //     return <p className="emptyState">Fetching Notifications... 🚀</p>;
-  //   }
-  //
-  //   return (
-  //     <ul className="notification-list">
-  //       {group.map((notification, index) => (
-  //         <li key={index} className="notification-item">
-  //           <strong>{notification.subject.title}</strong>
-  //           <em className="repo-name">{notification.repository.full_name}</em>
-  //         </li>
-  //       ))}
-  //     </ul>
-  //   );
-  // };
-
-
   const renderNotifications = (group) => {
     const titles = Object.keys(group);
 
@@ -227,6 +247,16 @@ function App() {
     <main className="container">
       <h1>GitHub Notifications</h1>
 
+      <div className="row" id="shortcut">
+        <span id="shortcut__title">Shortcut: Cmd/Ctrl+Shift</span>
+        <input
+          type="text"
+          value={shortcutKey}
+          onChange={(e) => {
+            e.preventDefault();
+            setShortcutKey(e.target.value)
+          }} />
+      </div>
       <div className="tabs">
         {["ci_activity", "participating", "review_requested", "rest"].map((tab) => (
           <button

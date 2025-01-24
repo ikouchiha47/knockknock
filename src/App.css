@@ -35,6 +35,26 @@
   justify-content: center;
 }
 
+#shortcut {
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+
+#shortcut span {
+  font-weight: bold;
+}
+
+#shortcut__title {
+  color: #ddd;
+}
+
+#shortcut input {
+  width: 48px;
+  padding: 8px;
+  text-align: center;
+}
+
 a {
   font-weight: 500;
   color: #646cff;
