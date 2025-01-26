@@ -13,10 +13,12 @@ use notification::{read_github_token, GithubClient};
 
 #[tauri::command]
 async fn get_github_notifications(
-    client: Arc<Mutex<GithubClient>>,
+    n_client: Arc<Mutex<GithubClient>>,
+    _d_client: Arc<Mutex<GithubClient>>,
     app: AppHandle,
 ) -> Result<(), String> {
-    let client = client.clone();
+    let n_client = n_client.clone();
+    // let d_client = d_client.clone();
 
     // let mut tinterval = tokio::time::interval(tokio::time::Duration::from_secs(60));
     let mut interval_duration = tokio::time::Duration::from_secs(60);
@@ -31,9 +33,9 @@ async fn get_github_notifications(
 
     loop {
         // tinterval.tick().await;
-        let client = client.lock().await;
+        let n_client = n_client.lock().await;
 
-        match client.get_notifications().await {
+        match n_client.get_notifications().await {
             Ok(notifications) => {
                 if notifications.is_empty() {
                     interval_duration =
@@ -59,14 +61,30 @@ async fn get_github_notifications(
             Err(e) => eprintln!("Error fetching notifications: {}", e),
         }
 
+        // let owner = "roverxio";
+        // let repo = "rendernet-backend";
+        // let d_client = d_client.lock().await;
+        //
+        // match d_client.get_pull_requests(owner, repo).await {
+        //     Ok(pull_requests) => {
+        //         if !pull_requests.is_empty() {
+        //             app.emit("github-pull-requests", pull_requests.clone())
+        //                 .unwrap_or_else(|e| eprintln!("Failed to emit pull requests: {}", e));
+        //         }
+        //     }
+        //     Err(e) => eprintln!("Error fetching pull requests: {}", e),
+        // }
         tokio::time::sleep(interval_duration).await;
     }
 }
 
 #[tokio::main]
 pub async fn run() {
-    let github_token = read_github_token().unwrap();
-    let github_client = Arc::new(Mutex::new(GithubClient::new(github_token)));
+    let n_github_token = read_github_token("notification").unwrap();
+    // let d_github_token = read_github_token("default").unwrap();
+
+    let n_github_client = Arc::new(Mutex::new(GithubClient::new(n_github_token)));
+    let d_github_client = Arc::new(Mutex::new(GithubClient::new("dummy".to_owned())));
 
     // let home_dir = "notifications.db";
     // let nman = NotificationManager::new("notifications.db");
@@ -77,7 +95,11 @@ pub async fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             let app_handle = app.handle();
-            tokio::spawn(get_github_notifications(github_client, app_handle.clone()));
+            tokio::spawn(get_github_notifications(
+                n_github_client,
+                d_github_client,
+                app_handle.clone(),
+            ));
 
             Ok(())
         })

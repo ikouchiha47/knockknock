@@ -10,6 +10,9 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
+use std::fs::File;
+use std::io::Write;
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Notification {
     pub id: String,
@@ -30,6 +33,7 @@ pub struct Repository {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Subject {
     pub title: String,
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -117,10 +121,17 @@ impl GithubClient {
             return Err(err);
         }
 
-        // println!("Response text {}", response_text);
-        // let notifications: Vec<Notification> = serde_json::from_str(&response_text).unwrap();
+        let response_text = response.text().await?;
+        // println!("Raw Response Text: {}", response_text);
 
-        let notifications: Vec<Notification> = response.json().await?;
+        let notifications: Vec<Notification> = serde_json::from_str(&response_text).unwrap();
+
+        if !notifications.is_empty() {
+            let mut file = File::create("n.json").unwrap();
+            file.write_all(response_text.as_bytes()).unwrap();
+        }
+
+        // let notifications: Vec<Notification> = response.json().await?;
         println!("received {} notifications", notifications.len());
 
         let current_time = Utc::now().to_rfc3339();
@@ -147,26 +158,65 @@ impl GithubClient {
         owner: &str,
         repo: &str,
     ) -> Result<Vec<PullRequest>, reqwest::Error> {
-        let response = self
+        let request = self
             .client
             .get(format!("{}/repos/{}/{}/pulls", self.base_url, owner, repo))
-            .headers(self.build_headers())
-            .send()
-            .await?;
+            .headers(self.build_headers());
 
-        let prs: Vec<PullRequest> = response.json().await?;
+        let response = request.send().await?;
+
+        if let Err(err) = response.error_for_status_ref() {
+            let response_text = response.text().await.unwrap();
+            let status_code = err
+                .status()
+                .unwrap_or(reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+
+            println!(
+                "Request failed: {}\nStatus {}\nBody: {}",
+                err, status_code, response_text,
+            );
+            // return Err(err);
+            return Ok(vec![]);
+        }
+        let response_text = response.text().await?;
+        // println!("Raw Response Text: {}", response_text);
+        let mut file = File::create("p.json").unwrap();
+        file.write_all(response_text.as_bytes()).unwrap();
+
+        let prs: Vec<PullRequest> = serde_json::from_str(&response_text).unwrap();
         Ok(prs)
     }
 }
 
-pub fn read_github_token() -> Option<String> {
+pub fn read_github_token(key: &str) -> Option<String> {
     let home_dir = dirs::home_dir()?.join(".githubapi");
+
     if Path::new(&home_dir).exists() {
         match fs::read_to_string(home_dir) {
-            Ok(token) => Some(token),
-            Err(_) => None,
+            Ok(contents) => {
+                for line in contents.lines() {
+                    if let Some((k, v)) = line.split_once('=') {
+                        if k.trim() == key {
+                            return Some(v.trim().to_string());
+                        }
+                    }
+                }
+                None // Key not found
+            }
+            Err(_) => None, // Error reading the file
         }
     } else {
-        None
+        None // File does not exist
     }
 }
+// pub fn read_github_token() -> Option<String> {
+//     let home_dir = dirs::home_dir()?.join(".githubapi");
+//     if Path::new(&home_dir).exists() {
+//         match fs::read_to_string(home_dir) {
+//             Ok(token) => Some(token),
+//             Err(_) => None,
+//         }
+//     } else {
+//         None
+//     }
+// }

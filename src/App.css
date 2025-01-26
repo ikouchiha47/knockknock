@@ -129,7 +129,8 @@ button {
 .tabs {
     display: flex;
     align-items: center;
-    justify-content: space-evenly;
+    justify-content: center;
+    gap: 1rem;
     width: 80vw;
     margin: 0 auto;
     margin-bottom: 20px;

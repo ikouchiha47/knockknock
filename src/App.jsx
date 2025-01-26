@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import { listen } from '@tauri-apps/api/event';
 import {
-  isPermissionGranted,
   requestPermission,
   sendNotification
 } from '@tauri-apps/plugin-notification';
@@ -15,11 +14,52 @@ import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
 
 import "./App.css";
 
+const _M = {
+  isInvolved: (category) => [
+    "review_requested",
+    "assign",
+    "approval_requested",
+    "participating",
+  ].includes(category),
+
+  getLinkFor: (category, repository, url) => {
+    if (_M.isInvolved(category) && repository) {
+      const u = new URL(url);
+      const prID = Number(u.pathname.split('/').at(-1))
+      const repoName = repository.full_name
+      const htmlUrl = new URL(repository.html_url)
+
+
+      if (!prID || isNaN(prID)) {
+        return "#"
+      }
+
+      let resource = category == "review_requested" ? "pull" : "issues";
+
+      return `${htmlUrl.origin}/${repoName}/${resource}/${prID}`
+    }
+
+    return "#"
+  },
+
+  isDirty: (groupsCounts, group) => {
+    let groupCount = groupsCounts.find(gcount => gcount.key == group);
+    return groupCount ? groupCount.dirty : false;
+  }
+}
+
+
 function App() {
   const [notifications, setNotifications] = useState([]);
   const [firstLoad, setFirstLoad] = useState(false);
   const [activeTab, setActiveTab] = useState("ci_activity");
   const [groupedNotifications, doGroupNotification] = useState(null);
+  const [groupCounts, setGroupCount] = useState([
+    { key: 'ci_activity', ci_activity: 0, dirty: false },
+    { key: 'review_requested', review_requested: 0, dirty: false },
+    { key: 'rest', rest: 0, dirty: false },
+    // { key: 'participating', participating: 0, dirty: false },
+  ]);
 
   const [shortcutKey, setShortcutKey] = useState('N');
 
@@ -142,11 +182,6 @@ function App() {
     const unlisten = listen("github-notification", (event) => {
       let recvdNotifications = event.payload || [];
 
-      setFirstLoad(prevLoadState => {
-        if (!prevLoadState) return true;
-        return prevLoadState;
-      })
-
       setNotifications((prevNotifications) => {
         const changedNotifications = new Set([
           ...recvdNotifications.filter(notif => prevNotifications.findIndex(n => n.id == notif.id) < 0)]);
@@ -166,18 +201,45 @@ function App() {
     };
   }, []);
 
+  const toCategory = (reason) => {
+    if (_M.isInvolved(reason)) return 'review_requested';
+    if ('ci_activity' == reason) return reason;
+    return 'rest'
+  }
 
   useEffect(async () => {
     const _groupedNotifications = {
-      ci_activity: groupByTitle(notifications.filter((n) => n.reason === "ci_activity")),
-      participating: groupByTitle(notifications.filter((n) => n.reason === "participating")),
-      review_requested: groupByTitle(notifications.filter((n) => n.reason === "review_requested")),
-      rest: groupByTitle(notifications.filter(
-        (n) => !["ci_activity", "participating", "review_requested"].includes(n.reason)
-      )),
+      ci_activity: groupByTitle(notifications.filter((n) => toCategory(n.reason))),
+      review_requested: groupByTitle(notifications.filter((n) => _M.isInvolved(n.reason))),
+      rest: groupByTitle(notifications.filter((n) => toCategory(n.reason))),
+      // participating: groupByTitle(notifications.filter((n) => toCategory(n.reason))),
     };
 
+    // console.log("nuts", notifications)
     doGroupNotification(_groupedNotifications);
+    setGroupCount(prevGCounts => {
+      let newGroupCount = notifications.
+        reduce((acc, n) => {
+          let category = toCategory(n.reason);
+          return { ...acc, [category]: (acc[category] || 0) + 1 }
+        }, {})
+
+      window._gg = notifications
+      console.log("new group count", newGroupCount, prevGCounts,);
+
+      let results = prevGCounts.map((groupCount, i) => {
+        let _gcount = { ...groupCount };
+
+        let groupKey = _gcount.key;
+        if (_gcount[groupKey] !== newGroupCount[groupKey]) {
+          _gcount.dirty = true
+        }
+
+        return _gcount;
+      })
+
+      return results;
+    });
 
     if (firstLoad)
       await notify({
@@ -186,6 +248,11 @@ function App() {
       })
 
   }, [notifications])
+
+  // useEffect(() => {
+  //   if (!firstLoad && notifications.length == 0) return;
+  //
+  // }, [groupCounts])
 
   const groupByTitle = (notifications) => {
     return notifications.reduce((acc, curr) => {
@@ -207,7 +274,7 @@ function App() {
     }, {});
   }
 
-  const renderNotifications = (group) => {
+  const renderNotifications = (category, group) => {
     const titles = Object.keys(group);
 
     if (titles.length === 0 && firstLoad) {
@@ -217,6 +284,15 @@ function App() {
     if (titles.length === 0 && !firstLoad) {
       return <p className="emptyState">Fetching Notifications... 🚀</p>;
     }
+
+    useEffect(() => {
+      if (!firstLoad && notifications.length == 0) return;
+
+      setFirstLoad(prevLoadState => {
+        if (!prevLoadState) return true;
+        return prevLoadState;
+      })
+    }, [])
 
     return (
       <ul className="notification-list">
@@ -231,7 +307,13 @@ function App() {
               <ul className="sub-list">
                 {groupItem.details.map((notification, index) => (
                   <li key={index} className="notification-sub-item">
-                    <em className="repo-name">{notification.repository.full_name}</em>
+                    <a
+                      className="repo-name"
+                      href={_M.getLinkFor(
+                        category,
+                        notification.repoistory,
+                        notification.subject.url,
+                      )}>{notification.repository.full_name}</a>
                   </li>
                 ))}
               </ul>
@@ -258,10 +340,14 @@ function App() {
           }} />
       </div>
       <div className="tabs">
-        {["ci_activity", "participating", "review_requested", "rest"].map((tab) => (
+        {groupCounts.map(gcount => gcount.key).map((tab) => (
           <button
             key={tab}
-            className={["tab-button", activeTab == tab ? "activeTabButton" : ""].join(" ").trim()}
+            className={[
+              "tab-button",
+              activeTab == tab ? "activeTabButton" : "",
+              _M.isDirty(groupCounts, tab) ? "updated" : "",
+            ].join(" ").trim()}
             onClick={() => setActiveTab(tab)}
           >
             {tab.replace("_", " ").toUpperCase()}
@@ -271,7 +357,7 @@ function App() {
 
       {/* Notifications */}
       <div style={{ marginTop: '16px' }}>
-        {groupedNotifications && renderNotifications(groupedNotifications[activeTab])}
+        {groupedNotifications && renderNotifications(activeTab, groupedNotifications[activeTab])}
       </div>
     </main>
   );
